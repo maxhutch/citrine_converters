@@ -2,6 +2,7 @@
 
 from pypif import pif
 import re
+import numpy as np
 import pandas as pd
 
 def converter(files=[], **keywds):
@@ -9,7 +10,7 @@ def converter(files=[], **keywds):
     Summary
     =======
 
-    Converter to calculate stress data from MTS CSV output.
+    Converter to calculate strain data from Aramis CSV output.
 
     Input
     =====
@@ -35,10 +36,12 @@ def converter(files=[], **keywds):
             junk = ifs.readline()
             # "Statistics export" line is currently discarded
             junk = ifs.readline()
-            # column names from Aramis are not well organized (IMHO):
-            # refactor
+            # refactor column names from Aramis
             names = [entry.strip().lower()
                      for entry in ifs.readline().split(',')]
+            #+ names[0] (strain stage): no change
+            #
+            #+ names[1] (strain)
             # `label` format: DESCRIPTION (REDUCTION): LABEL [UNITS]
             # desired format: LABEL (UNITS)
             label = names[1]
@@ -61,9 +64,25 @@ def converter(files=[], **keywds):
                 name=name,
                 scalars=list(data[name]),
                 units=unit,
+                files=pif.FileReference(relative_path=fname),
+                methods=pif.Method(name='digital image correlation (DIC)',
+                    instruments=pif.Instrument(name='DIC', producer='Aramis')),
                 data_type='EXPERIMENTAL',
                 tag=reduction)
             for name,unit in zip(names, units)]
+        # strain (results[1]) transforms
+        strain = results[1]
+        #+ standardize naming convention
+        strain_type = strain.name
+        strain.name = 'strain'
+        try:
+            strain.tag.append(strain_type)
+        except AttributeError:
+            strain.tag = [strain.tag, strain_type]
+        #+ is a transform from % strain necessary?
+        if strain.units == '%':
+            strain.scalars = list(np.divide(strain.scalars, 100.))
+            strain.units = 'mm/mm'
         # Determine the time at which each measurement was taken
         if 'timestep' in keywds:
             #+ ensure timestep is a float
@@ -72,7 +91,15 @@ def converter(files=[], **keywds):
                 name='time',
                 scalars=list(data[names[0]]*timestep),
                 units='s',
+                files=pif.FileReference(relative_path=fname),
+                methods=pif.Method(name='digital image correlation (DIC)',
+                    instruments=pif.Instrument(name='DIC', producer='Aramis')),
                 data_type='EXPERIMENTAL',
                 tag=reduction))
+    # Wrap in system object
+    results = pif.System(
+        names='Aramis',
+        properties=results,
+        tags=files)
     # job's done!
     return results

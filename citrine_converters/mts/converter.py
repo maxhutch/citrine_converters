@@ -47,6 +47,9 @@ def converter(files=[], **keywds):
                 name=name,
                 scalars=list(data[name]),
                 units=unit,
+                files=pif.FileReference(relative_path=fname),
+                methods=pif.Method(name='uniaxial',
+                    instruments=pif.Instrument(producer='MTS')),
                 data_type='EXPERIMENTAL',
                 tag='MTS')
             for name,unit in zip(names, units)]
@@ -60,13 +63,24 @@ def converter(files=[], **keywds):
                 name='area',
                 scalars=area,
                 units=keywds['units'],
+                files=pif.FileReference(relative_path=fname),
+                methods=pif.Method(name='uniaxial',
+                    instruments=pif.Instrument(producer='MTS')),
                 data_type='EXPERIMENTAL',
                 tag='cross sectional area'))
             results.append(pif.Property(
                 name='stress',
                 scalars=list(data['force']/area),
                 units=stress_units,
+                files=pif.FileReference(relative_path=fname),
+                methods=pif.Method(name='uniaxial',
+                    instruments=pif.Instrument(producer='MTS')),
                 data_type='EXPERIMENTAL',
                 tag='MTS'))
+    # Wrap in system object
+    results = pif.System(
+        names='MTS',
+        properties=results,
+        tags=files)
     # job's done!
     return results
