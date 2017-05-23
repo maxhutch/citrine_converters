@@ -16,10 +16,15 @@ from bisect import bisect_left as bisect
 from pypif import pif
 from citrine_converters.astm_e111 import (
     MechanicalProperties,
+    approximate_elastic_regime_from_hough,
+    set_elastic)
+from citrine_converters.astm_e111 import converter as astm_converter
+from citrine_converters.tools import (
     HoughSpace,
     Normalized,
-    approximate_elastic_regime_from_hough)
-from citrine_converters.astm_e111.mechanical import linear_merge
+    linear_merge,
+    covariance,
+    r_squared)
 
 STRAIN="{}/data/aramis-ey_strain-with-time.json".format(HERE)
 STRESS="{}/data/mts-with-stress.json".format(HERE)
@@ -42,7 +47,7 @@ def pif_to_dataframe(pifobj):
 
 @pytest.fixture
 def generate_output():
-    return False
+    return True
 
 
 @pytest.fixture
@@ -66,6 +71,34 @@ def mechanical_properties(generate_output,
     strain = strain_dataframe
     stress = stress_dataframe
     return MechanicalProperties(strain, stress)
+
+
+def test_r_squared():
+    predicted = np.arange(15)
+    actual = np.array([
+        0.12772934,   0.87629623,   1.57547475,   2.65007133,   4.24801054,
+        5.18072437,    6.2817513,   7.37424948,   7.97771838,   8.73240150,
+        9.65820983,  10.67520638,  12.06516463,  12.95414000,  13.70856501])
+    rsq = r_squared(predicted, predicted)
+    assert np.isclose(1, rsq), \
+        "Linear R^2 should be 1 ({})".format(rsq)
+    rsq = r_squared(predicted, actual)
+    assert np.isclose(0.996308546683, rsq), \
+        "Random perturbation should be 0.996308546683 ({})".format(rsq)
+
+
+def test_covariance():
+    actual = np.arange(15)
+    predicted = np.array(
+        [ 0.09782940,   1.05192404,   2.02236946,   2.90373055,   3.92367251,
+          4.92883409,   5.97735838,   6.92685796,   7.91508637,   8.95998904,
+         10.01092281,  10.99958067,  12.08381427,  12.92445983,  14.03825360 ])
+    cov = covariance(actual, actual)
+    assert np.isclose(0, cov), \
+        "Perfect covariance should be 0 ({}).".format(cov)
+    cov = covariance(actual, predicted)
+    assert np.isclose(0.4124658994, cov), \
+        "Perfect covariance should be 0.4124658994 ({}).".format(cov)
 
 
 def test_source_files(strain_dataframe, stress_dataframe):
@@ -194,14 +227,16 @@ def test_approximate_elastic_regime_from_hough(generate_output,
     strain = mechprop.strain
     stress = mechprop.stress
     elastic = approximate_elastic_regime_from_hough(mechprop)
-    assert np.isclose(elastic['elastic modulus'], 87448.9393194), \
+    assert np.isclose(elastic['elastic modulus'], 87448.9393194,
+                      rtol=5.e-2), \
         'Approximate elastic modulus does not match: ' \
         '{:.3f} (should be {:.3f})'.format(
             elastic['elastic modulus'],
             87448.9393194)
-    assert np.isclose(elastic['elastic onset'], 7.240136402072304e-05), \
-        'Approximate elastic onset does not match: '\
-        '{:.g} (should be {:.3g})'.format(
+    assert np.isclose(elastic['elastic onset'], 7.240136402072304e-05,
+                      rtol=5.e-2), \
+        'Approximate elastic onset does not match: ' \
+        '{:.4g} (should be {:.4g})'.format(
             elastic['elastic onset'],
             7.240136402072304e-5)
     if generate_output:
@@ -244,3 +279,156 @@ def test_approximate_elastic_regime_from_hough(generate_output,
         plt.draw()
         plt.savefig('{}/data/peaks-in-hough.png'.format(HERE),
                     dpi=300, bbox_inches='tight')
+
+
+def test_set_elastic(generate_output, mechanical_properties):
+    mechprop = mechanical_properties
+    strain = mechprop.strain
+    stress = mechprop.stress
+    best = set_elastic(mechprop)
+    SE_slope = best['SE modulus']
+    epstol = 5.e-2
+    sigtol = 1.e-2
+    assert np.isclose(mechprop.elastic_modulus, 107939.857234,
+                      atol=SE_slope), \
+        'Elastic modulus ({:.0f}) does not ' \
+        'match (107940)'.format(mechprop.elastic_modulus)
+    assert np.isclose(mechprop.elastic_onset, 0.000164771050777,
+                      rtol=epstol), \
+        'Elastic onset ({:.4g}) does not ' \
+        'match 0.000164771050777'.format(mechprop.elastic_onset)
+    assert np.isclose(mechprop.yield_stress, 491.634216083,
+                      atol=0.02*SE_slope), \
+        'Yield stress ({:.3f}) does not ' \
+        'match 491.634'.format(mechprop.yield_stress)
+    assert np.isclose(mechprop.yield_strain, 0.00671947613083,
+                      rtol=epstol), \
+        'Yield strain ({:.4g}) does not ' \
+        'match 0.0067195'.format(mechprop.yield_strain)
+    assert np.isclose(mechprop.ultimate_stress, 921.467796124,
+                      rtol=sigtol), \
+        'Ultimate stress ({:.3f}) does not ' \
+        'match 921.468'.format(mechprop.ultimate_stress)
+    assert np.isclose(mechprop.necking_onset, 0.294105976091,
+                      rtol=epstol), \
+        'Necking onset ({:.4g}) does not ' \
+        'match 0.29411'.format(mechprop.necking_onset)
+    assert np.isclose(mechprop.fracture_stress, 921.418982415,
+                      rtol=sigtol), \
+        'Fracture stress ({:.3f}) does not ' \
+        'match 921.419'.fomat(mechprop.fracture_stress)
+    assert np.isclose(mechprop.total_elongation, 0.294421409095,
+                      rtol=epstol), \
+        'Total elongation ({:.4g}) does not ' \
+        'match 0.29442'.format(mechprop.total_elongation)
+    assert np.isclose(mechprop.ductility, 0.28590708738,
+                      rtol=epstol), \
+        'Ductility ({:.4g}) does not ' \
+        'match 0.28591'.format(mechprop.ductility)
+    assert np.isclose(mechprop.toughness, 236.536813845,
+                      rtol=sigtol), \
+        'Toughness ({:.3f}) does not ' \
+        'match 236.537'.format(mechprop.toughness)
+    if generate_output:
+        print('')
+        print("best['param']: {}".format(best['param']))
+        print("best['SE modulus']: {}".format(best['SE modulus']))
+        print("best['cov']: {}".format(best['cov']))
+        print("best['rsq']: {}".format(best['rsq']))
+        print("modulus: {}".format(mechprop.elastic_modulus))
+        print("onset: {}".format(mechprop.elastic_onset))
+        print("yield stress: {}".format(mechprop.yield_stress))
+        print("yield strain: {}".format(mechprop.yield_strain))
+        print("plastic onset: {}".format(mechprop.plastic_onset))
+        print("ultimate stress: {}".format(mechprop.ultimate_stress))
+        print("necking onset: {}".format(mechprop.necking_onset))
+        print("fracture stress: {}".format(mechprop.fracture_stress))
+        print("total elongation: {}".format(mechprop.total_elongation))
+        print("ductility: {}".format(mechprop.ductility))
+        print("toughness: {}".format(mechprop.toughness))
+        #
+        plt.style.use('ggplot')
+        #
+        xoffset = 0.001
+        yoffset = mechprop.elastic_modulus*xoffset/2
+        fig = plt.figure(figsize=(16,9))
+        ax = fig.add_subplot(111)
+        ax.plot(strain, stress, 'k-', label=r'$\sigma(\epsilon)$')
+        ax.plot(best['elastic strain'], best['elastic stress'], 'bx')
+        # toughness
+        mask = strain > mechprop.elastic_onset
+        ax.fill_between(strain[mask], 0, stress[mask], facecolor='y', alpha=0.5)
+        _ = ax.text((strain.max() + strain.min())/2, (stress.max() + stress.min())/2,
+            'toughness = {:.3f} MPa'.format(mechprop.toughness))
+        # Modulus curves:
+        #+ set strain range (no offset)
+        x = np.array([0, mechprop.ultimate_stress/mechprop.elastic_modulus])
+        #+ calculate corresponding stress
+        y = mechprop.elastic_modulus*x
+        #+ perform strain to accound for elastic onset
+        x += mechprop.elastic_onset
+        ax.plot(x, y, 'r-', label='elastic')
+        # 0.2% offset for plasticity
+        x += 0.002
+        ax.plot(x, y, 'g-', label='plastic')
+        _ = ax.text(x[1] + xoffset, y[1],
+            r'E = {:.3f} $\pm$ {:.3f} GPa'.format(
+                mechprop.elastic_modulus/1000.,
+                best['SE modulus']/1000),
+            ha='left', va='center')
+        # yield
+        x = [mechprop.yield_strain]
+        y = [mechprop.yield_stress]
+        ax.scatter(x, y, marker='o', color='g', s=30, label='yield')
+        _ = ax.text(x[0] + xoffset, y[0] - yoffset,
+            r'$(\epsilon_y, \sigma_y)$ = ({:.0f} $\mu \epsilon$, {:.0f} MPa)'.format(1000*x[0], y[0]),
+            ha='left', va='top')
+        # ultimate
+        x = [mechprop.necking_onset]
+        y = [mechprop.ultimate_stress]
+        ax.scatter(x, y, marker='^', color='r', s=30, label='ultimate')
+        _ = ax.text(x[0], y[0] + yoffset,
+            r'$(\epsilon_u, \sigma_u)$ = ({:.0f} $\mu \epsilon$, {:.0f} MPa)'.format(1000*x[0], y[0]),
+            ha='center', va='bottom')
+        # fracture
+        x = [mechprop.total_elongation + mechprop.elastic_onset]
+        y = [mechprop.fracture_stress]
+        ax.scatter(x, y, marker='v', color='b', s=30, label='fracture')
+        _ = ax.text(x[0], y[0]-yoffset,
+            r'$(\epsilon_f, \sigma_f)$ = ({:.0f} $\mu \epsilon$, {:.0f} MPa)'.format(1000*x[0], y[0]),
+            ha='right', va='top')
+        # ductility
+        x1 = mechprop.elastic_onset
+        x2 = mechprop.ductility + mechprop.elastic_onset
+        dx = x2 - x1
+        y = yoffset
+        dy = 0
+        # ax.arrow(x1, y, dx, dy, fc='k', ec='k',
+        #          head_width=10, head_length=0.005,
+        #          overhang=0.1, length_includes_head=True)
+        ax.annotate('',
+            (x1, y), (x2, y),
+            arrowprops=dict(
+                arrowstyle='<->', lw=2,
+                fc='k', ec='k'))
+        ymin, ymax = ax.get_ylim()
+        ax.axvline(x2,
+                   ymin=(0 - ymin)/(ymax - ymin),
+                   ymax=(2*y - ymin)/(ymax - ymin),
+                   color='k')
+        _ = ax.text((x1+x2)/2, y + yoffset,
+            r'ductility = {:.3f}%'.format(mechprop.ductility*100),
+            ha='center', va='bottom')
+        #
+        ax.set_xlabel(r'$\epsilon$ (mm/mm)')
+        ax.set_ylabel(r'$\sigma$ (MPa)')
+        plt.draw()
+        plt.savefig('{}/data/mechanical_properties.png'.format(HERE),
+                    dpi=300, bbox_inches='tight')
+
+
+def test_converter(generate_output):
+    astm_pif = astm_converter([STRAIN, STRESS])
+    if generate_output:
+        with open('{}/data/astm-mts-aramis.json'.format(HERE), 'w') as ofs:
+            pif.dump(astm_pif, ofs)
