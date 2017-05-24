@@ -4,6 +4,7 @@ from .mechanical import MechanicalProperties, set_elastic
 from pypif import pif
 import re
 import pandas as pd
+import numpy as np
 
 
 def converter(files=[], **keywds):
@@ -86,6 +87,16 @@ def converter(files=[], **keywds):
         msg = 'Strain and stress files must contain "strain" and ' \
               '"stress" fields, respectively.'
         raise IndexError(msg)
+    # Strain can be recorded as negative for compression, but this
+    # is non-standard. Reverse the direction of the strain if it
+    # moves negatively
+    # ensure the strain data progresses in the +x direction
+    vec = epsilon['strain'].values
+    epsilon['strain'] *= np.sign(vec[-1] - vec[0])
+    # similaly ensure the stress data progresses in the +y direction
+    # i.e. stress is positive in the direction of loading.
+    vec = sigma['stress'].values
+    sigma['stress'] *= np.sign(vec[-1] - vec[0])
 
     # units
     try:
