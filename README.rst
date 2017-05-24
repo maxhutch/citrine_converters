@@ -8,9 +8,9 @@ keys are processed and stored case insensitively.
 Sources
 -------
 
-1. MTS (Mechanical testing data)
+1. Mark10 (Mechanical testing data)
    Reads time, force and displacement data from the CSV output
-   written by MTS. If ``area=(float)``` and ``units=(string)``
+   written by Mark10. If ``area=(float)``` and ``units=(string)``
    keywords are provided, then the stress will also be calculated.
    The available keys will depend on the input file, but based on
    early testing, are "time", "force", "disp", "area" (if specified),

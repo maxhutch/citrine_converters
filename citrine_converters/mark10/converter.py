@@ -8,7 +8,7 @@ def converter(files=[], **keywds):
     Summary
     =======
 
-    Converter to calculate stress data from MTS CSV output.
+    Converter to calculate stress data from Mark10 CSV output.
 
     Input
     =====
@@ -49,9 +49,9 @@ def converter(files=[], **keywds):
                 units=unit,
                 files=pif.FileReference(relative_path=fname),
                 methods=pif.Method(name='uniaxial',
-                    instruments=pif.Instrument(producer='MTS')),
+                    instruments=pif.Instrument(producer='Mark10')),
                 data_type='EXPERIMENTAL',
-                tag='MTS')
+                tag='Mark10')
             for name,unit in zip(names, units)]
         # Calculate stress from force and cross-sectional area, if provided
         # Both 'area' and 'units' keywords must be given
@@ -65,7 +65,7 @@ def converter(files=[], **keywds):
                 units=keywds['units'],
                 files=pif.FileReference(relative_path=fname),
                 methods=pif.Method(name='uniaxial',
-                    instruments=pif.Instrument(producer='MTS')),
+                    instruments=pif.Instrument(producer='Mark10')),
                 data_type='EXPERIMENTAL',
                 tag='cross sectional area'))
             results.append(pif.Property(
@@ -74,12 +74,12 @@ def converter(files=[], **keywds):
                 units=stress_units,
                 files=pif.FileReference(relative_path=fname),
                 methods=pif.Method(name='uniaxial',
-                    instruments=pif.Instrument(producer='MTS')),
+                    instruments=pif.Instrument(producer='Mark10')),
                 data_type='EXPERIMENTAL',
-                tag='MTS'))
+                tag='Mark10'))
     # Wrap in system object
     results = pif.System(
-        names='MTS',
+        names='Mark10',
         properties=results,
         tags=files)
     # job's done!

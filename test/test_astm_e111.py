@@ -27,7 +27,7 @@ from citrine_converters.tools import (
     r_squared)
 
 STRAIN="{}/data/aramis-ey_strain-with-time.json".format(HERE)
-STRESS="{}/data/mts-with-stress.json".format(HERE)
+STRESS="{}/data/mark10-with-stress.json".format(HERE)
 
 def pif_to_dataframe(pifobj):
     """
@@ -234,9 +234,9 @@ def test_approximate_elastic_regime_from_hough(generate_output,
             elastic['elastic modulus'],
             87448.9393194)
     assert np.isclose(elastic['elastic onset'], 7.240136402072304e-05,
-                      rtol=5.e-2), \
+                      rtol=5.e-2, atol=0.0001), \
         'Approximate elastic onset does not match: ' \
-        '{:.4g} (should be {:.4g})'.format(
+        '{:} (should be {:.4g})'.format(
             elastic['elastic onset'],
             7.240136402072304e-5)
     if generate_output:
@@ -430,5 +430,5 @@ def test_set_elastic(generate_output, mechanical_properties):
 def test_converter(generate_output):
     astm_pif = astm_converter([STRAIN, STRESS])
     if generate_output:
-        with open('{}/data/astm-mts-aramis.json'.format(HERE), 'w') as ofs:
+        with open('{}/data/astm-mark10-aramis.json'.format(HERE), 'w') as ofs:
             pif.dump(astm_pif, ofs)

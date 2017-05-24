@@ -45,9 +45,9 @@ def converter(files=[], **keywds):
             # `label` format: DESCRIPTION (REDUCTION): LABEL [UNITS]
             # desired format: LABEL (UNITS)
             label = names[1]
-            fmtstr = r'[^(]+\(([^)]+)\):\s*([^[]+)\[([^]]+)\]'
+            fmark10tr = r'[^(]+\(([^)]+)\):\s*([^[]+)\[([^]]+)\]'
             try:
-                reduction, label, units = re.search(fmtstr, label).groups()
+                reduction, label, units = re.search(fmark10tr, label).groups()
                 names[1] = label
             except ValueError:
                 msg = '"{}" in {} is not a valid label format.'.format(
