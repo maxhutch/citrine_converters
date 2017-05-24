@@ -4,6 +4,7 @@ from pypif import pif
 import re
 import numpy as np
 import pandas as pd
+from ..tools import replace_if_present_else_append
 
 def converter(files=[], **keywds):
     """
@@ -87,15 +88,17 @@ def converter(files=[], **keywds):
         if 'timestep' in keywds:
             #+ ensure timestep is a float
             timestep = float(keywds['timestep'])
-            results.append(pif.Property(
-                name='time',
-                scalars=list(data[names[0]]*timestep),
-                units='s',
-                files=pif.FileReference(relative_path=fname),
-                methods=pif.Method(name='digital image correlation (DIC)',
-                    instruments=pif.Instrument(name='DIC', producer='Aramis')),
-                data_type='EXPERIMENTAL',
-                tag=reduction))
+            replace_if_present_else_append(results,
+                pif.Property(
+                    name='time',
+                    scalars=list(data[names[0]]*timestep),
+                    units='s',
+                    files=pif.FileReference(relative_path=fname),
+                    methods=pif.Method(name='digital image correlation (DIC)',
+                        instruments=pif.Instrument(name='DIC', producer='Aramis')),
+                    data_type='EXPERIMENTAL',
+                    tag=reduction),
+                cmp=lambda A,B : A.name.lower() == B.name.lower())
     # Wrap in system object
     results = pif.System(
         names='Aramis',

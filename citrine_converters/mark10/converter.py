@@ -2,6 +2,8 @@
 
 from pypif import pif
 import pandas as pd
+from ..tools import replace_if_present_else_append
+
 
 def converter(files=[], **keywds):
     """
@@ -59,24 +61,29 @@ def converter(files=[], **keywds):
             area = float(keywds['area'])
             stress_units = '{}/{}'.format(dict(zip(names, units))['force'],
                                           keywds['units'])
-            results.append(pif.Property(
-                name='area',
-                scalars=area,
-                units=keywds['units'],
-                files=pif.FileReference(relative_path=fname),
-                methods=pif.Method(name='uniaxial',
-                    instruments=pif.Instrument(producer='Mark10')),
-                data_type='EXPERIMENTAL',
-                tag='cross sectional area'))
-            results.append(pif.Property(
-                name='stress',
-                scalars=list(data['force']/area),
-                units=stress_units,
-                files=pif.FileReference(relative_path=fname),
-                methods=pif.Method(name='uniaxial',
-                    instruments=pif.Instrument(producer='Mark10')),
-                data_type='EXPERIMENTAL',
-                tag='Mark10'))
+            # add property to results
+            replace_if_present_else_append(results,
+                pif.Property(
+                    name='area',
+                    scalars=area,
+                    units=keywds['units'],
+                    files=pif.FileReference(relative_path=fname),
+                    methods=pif.Method(name='uniaxial',
+                        instruments=pif.Instrument(producer='Mark10')),
+                    data_type='EXPERIMENTAL',
+                    tag='cross sectional area'),
+                cmp=lambda A,B : A.name.lower() == B.name.lower())
+            replace_if_present_else_append(results,
+                pif.Property(
+                    name='stress',
+                    scalars=list(data['force']/area),
+                    units=stress_units,
+                    files=pif.FileReference(relative_path=fname),
+                    methods=pif.Method(name='uniaxial',
+                        instruments=pif.Instrument(producer='Mark10')),
+                    data_type='EXPERIMENTAL',
+                    tag='Mark10'),
+                cmp=lambda A,B : A.name.lower() == B.name.lower())
     # Wrap in system object
     results = pif.System(
         names='Mark10',
