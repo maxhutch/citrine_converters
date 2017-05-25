@@ -87,16 +87,31 @@ def converter(files=[], **keywds):
         msg = 'Strain and stress files must contain "strain" and ' \
               '"stress" fields, respectively.'
         raise IndexError(msg)
+    # TODO: This may be a good use case for a more general set of
+    # `transform` modules, e.g. `transform.reflect`,
+    # `transform.scale`, etc. For only one, this is overkill, but
+    # if more transforms are necessary to handle more edge cases,
+    # implement replace this with
+    # `..tools.transform.reflect(np.sign(np.mean(vec)))` and
+    # implement any future transforms in a similar fashion.
+    #
     # Strain can be recorded as negative for compression, but this
     # is non-standard. Reverse the direction of the strain if it
     # moves negatively
     # ensure the strain data progresses in the +x direction
     vec = epsilon['strain'].values
-    epsilon['strain'] *= np.sign(vec[-1] - vec[0])
+    steps = np.sign(vec[1:] - vec[:-1])
+    # -1 --> reflection, 1 --> identity
+    reflect = np.sign(np.mean(steps))
+    epsilon['strain'] *= reflect
     # similaly ensure the stress data progresses in the +y direction
-    # i.e. stress is positive in the direction of loading.
+    # i.e. stress is positive. Compression/tension distinguished by
+    # the direction of loading.
     vec = sigma['stress'].values
-    sigma['stress'] *= np.sign(vec[-1] - vec[0])
+    steps = np.sign(vec[1:] - vec[:-1])
+    # -1 --> reflection, 1 --> identity
+    reflect = np.sign(np.mean(steps))
+    sigma['stress'] *= reflect
 
     # units
     try:
@@ -115,7 +130,8 @@ def converter(files=[], **keywds):
     except KeyError:
         # if not specified, then get from stress/strain input
         try:
-            get_units = lambda sys : [p.units for p in sys if p.name == 'units'][0]
+            get_units = lambda sys : \
+                [p.units for p in sys if p.name == 'units'][0]
             stress_units = get_units(stress)
             strain_units = get_units(strain)
         except IndexError:
