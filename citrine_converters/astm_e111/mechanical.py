@@ -112,7 +112,7 @@ class MechanicalProperties(object):
             raise ValueError(msg)
         # calculate the strain at yield
         yield_stress = self.yield_stress
-        yield_strain = yield_stress/modulus + self.elastic_onset + ELASTIC_OFFSET
+        yield_strain = yield_stress/modulus + ELASTIC_OFFSET
         return yield_strain
 
     @property
@@ -132,7 +132,7 @@ class MechanicalProperties(object):
             msg = 'The elastic modulus must be set before the ' \
                   'elastic region can be defined.'
         strain = self.strain
-        mask = (strain > onset) & (strain < yield_strain)
+        mask = (strain > onset) & (strain < yield_strain + onset)
         return self.strain[mask]
 
     @property
@@ -143,7 +143,7 @@ class MechanicalProperties(object):
             msg = 'The elastic modulus must be set before the ' \
                   'elastic region can be defined.'
         strain = self.strain
-        mask = (strain > yield_strain)
+        mask = (strain > yield_strain + onset)
         return self.strain[mask]
 
     @property
@@ -153,7 +153,7 @@ class MechanicalProperties(object):
     @property
     def necking_onset(self):
         i = np.where(self.stress == self.ultimate_stress)[0][0]
-        return self.strain[i]
+        return self.strain[i] - self.elastic_onset
 
     @property
     def fracture_stress(self):

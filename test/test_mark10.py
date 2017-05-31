@@ -54,7 +54,7 @@ def test_file_list(mark10_no_stress, generate_output):
 def test_stress(mark10_with_stress, generate_output):
     area=12.9
     units='mm^2'
-    pifs = converter(SOURCE, area=area, units=units)
+    pifs = converter(SOURCE, area=area)
     if generate_output:
         with open('{}/data/mark10-with-stress.json'.format(HERE), 'w') as ofs:
             pif.dump(pifs, ofs, sort_keys=True)
