@@ -100,7 +100,7 @@ def converter(files=[], **keywds):
     # moves negatively
     # ensure the strain data progresses in the +x direction
     vec = epsilon['strain'].values
-    steps = np.sign(vec[1:] - vec[:-1])
+    steps = vec[1:] - vec[:-1]
     # -1 --> reflection, 1 --> identity
     reflect = np.sign(np.mean(steps))
     epsilon['strain'] *= reflect
@@ -108,7 +108,7 @@ def converter(files=[], **keywds):
     # i.e. stress is positive. Compression/tension distinguished by
     # the direction of loading.
     vec = sigma['stress'].values
-    steps = np.sign(vec[1:] - vec[:-1])
+    steps = vec[1:] - vec[:-1]
     # -1 --> reflection, 1 --> identity
     reflect = np.sign(np.mean(steps))
     sigma['stress'] *= reflect

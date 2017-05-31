@@ -14,6 +14,9 @@ from ..tools import (
     covariance)
 
 
+ELASTIC_OFFSET=0.002
+
+
 class MechanicalProperties(object):
     """
     Summary
@@ -84,12 +87,12 @@ class MechanicalProperties(object):
         substrain = self.strain[subset]
         substress = self.stress[subset]
         #+ find the hypothetical elastic stress at each strain
-        estress = modulus*(substrain - 0.002)
+        estress = modulus*(substrain - self.elastic_onset - ELASTIC_OFFSET)
         #+ when the hypothetical elastic stress is greater than
         #+ the measured stress, we have reached yield.
-        mask   = (substress > estress)
+        mask   = (substress < estress)
         for i in reversed(range(len(mask)-1)):
-            if mask[i]:
+            if not mask[i]:
                 yield_stress = (substress[i] + substress[i+1])/2
                 break
         return yield_stress
@@ -108,9 +111,8 @@ class MechanicalProperties(object):
                   'strain at yield can be calculated.'
             raise ValueError(msg)
         # calculate the strain at yield
-        modulus      = self.elastic_modulus
         yield_stress = self.yield_stress
-        yield_strain = yield_stress/modulus + self.elastic_onset + 0.002
+        yield_strain = yield_stress/modulus + self.elastic_onset + ELASTIC_OFFSET
         return yield_strain
 
     @property
@@ -155,11 +157,13 @@ class MechanicalProperties(object):
 
     @property
     def fracture_stress(self):
-        return self.stress[-1]
+        i = np.argmax(self.strain)
+        return self.stress[i]
 
     @property
     def total_elongation(self):
-        return self.strain[-1] - self.elastic_onset
+        i = np.argmax(self.strain)
+        return self.strain[i] - self.elastic_onset
 
     @property
     def ductility(self):
@@ -238,7 +242,7 @@ def approximate_elastic_regime_from_hough(mechprop, **kwds):
     strength is defined as the intersection of the stress strain curve and
 
     $$
-        y = (x-0.002) \tan(\theta) \left( \frac{y_{max} - y_{min}}{x_{max} - x_{min}} \right) - x_{min} \tan(\theta)\left( \frac{y_{max} - y_{min}}{x_{max} - x_{min}} \right) - d (y_{max} - y_{min}) \sec(\theta) + y_{min}
+        y = (x-ELASTIC_OFFSET) \tan(\theta) \left( \frac{y_{max} - y_{min}}{x_{max} - x_{min}} \right) - x_{min} \tan(\theta)\left( \frac{y_{max} - y_{min}}{x_{max} - x_{min}} \right) - d (y_{max} - y_{min}) \sec(\theta) + y_{min}
     $$
 
     Input
@@ -312,8 +316,8 @@ def approximate_elastic_regime_from_hough(mechprop, **kwds):
     # y = m*x + b
     m = tanq*dydx
     b = -xmin*m - distance*dy*secq + ymin
-    # find the plastic region (lies below `y = m*(x - 0.002) + b` line)
-    plastic = (y < (m*(x - 0.002) + b))
+    # find the plastic region (lies below `y = m*(x - ELASTIC_OFFSET) + b` line)
+    plastic = (y < (m*(x - ELASTIC_OFFSET) + b))
     for i in reversed(range(plastic.size)):
         if not plastic[i]:
             plastic[:i] = False
