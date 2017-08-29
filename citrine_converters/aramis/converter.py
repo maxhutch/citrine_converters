@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from ..tools import replace_if_present_else_append
 
+
 def converter(files=[], **keywds):
     """
     Summary
@@ -31,6 +32,7 @@ def converter(files=[], **keywds):
     if isinstance(files, str):
         files = [files]
     # Process filenames
+    results = []
     for fname in files:
         with open(fname) as ifs:
             # defaultcode/encoding is currently discarded

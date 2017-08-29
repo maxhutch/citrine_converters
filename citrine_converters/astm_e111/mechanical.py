@@ -2,9 +2,12 @@ from __future__ import division
 
 import numpy as np
 import warnings
+from itertools import groupby
+from scipy.signal import medfilt as median_filter
 from scipy.ndimage import gaussian_filter
 from scipy.optimize import leastsq
 from scipy.stats import linregress
+from scipy.ndimage.morphology import binary_dilation, binary_erosion
 from ..tools import (
     linear_merge,
     Normalized,
@@ -282,27 +285,30 @@ def approximate_elastic_regime_from_hough(mechprop, **kwds):
     # handle keywords
     qlo = kwds.get('lower', 60)
     qhi = kwds.get('upper', 90)
+
     # The Hough space will result in a curve that forms a "V" shape
-    # near 90 degrees. If plotted with `matplotlib.imshow(...)`, this
-    # "V" will point to the left, so if iterating over rows (axis 0)
-    # will find the edges of the "V", then iterating over these edge
-    # points for each column will identify the point of the "V".
-    # construct Hough space on normalized stress and strain
+    # near 90 degrees. The stress-strain curve have significantly
+    # different ranges: 0-1000 MPa and 0-0.4 strain, respectively.
+    # Normalize stress and strain so both are in the range [0-1].
     strain = Normalized(mechprop.strain)
     stress = Normalized(mechprop.stress)
     hough = HoughSpace(strain, stress, **kwds)
+
     # resample Hough space
     resampled = resample(hough)
+
     # smooth the resampled data to eliminate noise
     resampled[:] = gaussian_filter(resampled, 3)
     resampled[:] = gaussian_filter(resampled, 3)
     resampled[:] = gaussian_filter(resampled, 3)
+
     # look in the 60-90 degree range for the elastic region
     qlo = int(qlo/180*hough.nq)
     qhi = int(qhi/180*hough.nq)
     sub = resampled[qlo:qhi]
     pos = np.mean(np.argwhere(sub == sub.max()), axis=0) + [qlo, 0]
     theta, distance = hough.theta_distance(*pos)
+
     # move from scaled to unscaled coordinates (see doc string)
     x, y = strain.unscaled, stress.unscaled
     xs, ys = strain, stress
@@ -313,26 +319,33 @@ def approximate_elastic_regime_from_hough(mechprop, **kwds):
     dydx = dy/dx
     tanq = np.tan(theta)
     secq = 1./np.cos(theta)
+
     # y = m*x + b
     m = tanq*dydx
     b = -xmin*m - distance*dy*secq + ymin
+
     # find the plastic region (lies below `y = m*(x - ELASTIC_OFFSET) + b` line)
     plastic = (y < (m*(x - ELASTIC_OFFSET) + b))
     for i in reversed(range(plastic.size)):
         if not plastic[i]:
             plastic[:i] = False
             break
+
     # find the compliance region, if it exists
-    compliance = (strain < -b/m)
-    # mask
+    compliance = np.zeros_like(plastic, dtype=bool)
+    #compliance = (strain < -b/m)
+
+    # a first approximation to the elastic region is the region
+    # that is not compliance and not plastic.
     mask = ((~compliance) & (~plastic))
     return {
-        'elastic modulus' : m,
-        'elastic onset'   : -b/m,
-        'elastic strain'  : x[mask],
-        'elastic stress'  : y[mask],
-        'resampled'       : resampled,
-        'hough'           : hough }
+        'elastic modulus': m,
+        'elastic onset': -b/m,
+        'elastic strain': x[mask],
+        'elastic stress': y[mask],
+        'resampled': resampled,
+        'hough': hough
+    }
 
 
 def set_elastic(mechprop, **kwds):
@@ -360,96 +373,157 @@ def set_elastic(mechprop, **kwds):
     Returns best performance metrics. Modulus and offset stored in
     `mechprop`.
     """
+    # ########################
     # handle keyword arguments
     approximator = kwds.get('approximator',
-                            approximate_elastic_regime_from_hough)
+            approximate_elastic_regime_from_hough)
+
     # maximum number of iterations
     maxiter = kwds.get('maxiter', 20)
-    # set the target optimization (minimization)
-    target = lambda cov, rsq : cov
-    if 'cov' in kwds:
-        target = lambda cov, rsq : cov
-    elif 'rsq' in kwds:
+
+    # set the target optimization (This is a minimization.)
+    if 'rsq' in kwds:
         target = lambda cov, rsq : 1. - rsq
+    else:
+        # by default, optimize on the covariance
+        target = lambda cov, rsq : cov
+
     # error in the strain gage measurement
     error = kwds.get('error', 0.00005)
-    # #####  ##### #
-    strain = mechprop.strain
-    stress = mechprop.stress
+
+    # ########################
+    # strain = mechprop.strain
+    # stress = mechprop.stress
     approx = approximator(mechprop)
+
+    # ########################
     # sigma = E epsilon + offset
     # epsilon = e_calc = (sigma - offset)/E
-    # t.f.
+    # s.t.
     # residual strain = e_measured - e_calc
     predicted_strain = lambda s, E, b : (s - b)/E
     residual_strain = lambda e, s, E, b: e - predicted_strain(s, E, b)
+
+    # ########################
     # use residual strain ($\epsilon - E \sigma$) to refine the
     # elastic properties.
     epsilon = approx['elastic strain']
-    sigma   = approx['elastic stress']
-    m       = approx['elastic modulus']
-    b       = -m*approx['elastic onset']
-    mask    = np.ones_like(epsilon, dtype=bool)
-    res     = residual_strain(epsilon, sigma, m, b)
+    sigma = approx['elastic stress']
+    m = approx['elastic modulus']
+    b = -m*approx['elastic onset']
+    mask = np.zeros_like(epsilon, dtype=bool)
+    mask[len(mask)//10:9*len(mask)//10] = 1
+    pmask = np.ones_like(epsilon, dtype=bool)  # plastic mask
+    # cmask = np.ones_like(epsilon, dtype=bool)  # compliance mask
+    res = residual_strain(epsilon[mask], sigma[mask], m, b)
     best = {
-        'param' : [b, m],
-        'SE modulus'  : 1e6,
-        'cov'   : covariance(predicted_strain(sigma, m, b), epsilon),
-        'rsq'   : r_squared(predicted_strain(sigma, m, b), epsilon),
-        'res'   : res,
-        'elastic strain' : epsilon,
-        'elastic stress' : sigma,
-        'mask'  : mask
+        'param': [b, m],
+        'SE modulus': 1e6,
+        'cov': covariance(epsilon[mask], predicted_strain(sigma[mask], m, b)),
+        'rsq': r_squared(epsilon[mask], predicted_strain(sigma[mask], m, b)),
+        'residual strain': res,
+        'elastic strain': epsilon[mask],
+        'elastic stress': sigma[mask],
+        'mask': mask,
+        'hough': approx['hough'],
+        'resampled': approx['resampled']
     }
-    # # update the modulus of the mechanical properties
-    # intercept, modulus = best['param']
-    # mechprop.elastic_modulus = modulus
-    # mechprop.elastic_onset   = -intercept/modulus
-    # return best
+
+    # ########################
+    # update the modulus of the mechanical properties
     # perform a linear fit with the current set of points
-    fitfunc = lambda p : \
+    fitfunc = lambda p: \
         residual_strain(epsilon[mask], sigma[mask], p[1], p[0])
+    intercept, modulus = best['param']
     for numiter in range(maxiter):
-        # p0   = best['param']
-        # p, covp, infodict, mesg, ier = leastsq(
-        #     fitfunc, p0, full_output=True)
-        # the current modulus and intercept
-        # intercept, modulus = p
-        modulus, intercept, corrcoeff, pvalue, SE_slope = \
-            linregress(epsilon[mask], sigma[mask])
         # use residual strain to figure out the appropriate
         # points to use in calculating the stress/strain
-        res = residual_strain(epsilon, sigma, modulus, intercept)
-        mask = (np.abs(res) < error)
-        for i in reversed(range(len(mask)-1)):
-            if mask[i]:
-                upper = i+1
+        res = residual_strain(epsilon[mask], sigma[mask],
+                modulus, intercept)
+
+        # find plastic mask. This is the region where the
+        # stress response is sub linear.
+        pmask[mask] = (np.abs(res) < error)
+        for i in reversed(range(len(pmask)-1)):
+            if pmask[i]:
+                lower = i+1
                 break
-        mask[upper:] = False
-        mask[:upper] = True
+        pmask[lower:] = True
+        pmask[:lower] = False
+
+        # find compliance mask: the region where the stress
+        # response is lower than expected for an applied strain.
+        # The best fit linear elastic region is offset by the
+        # error in the strain gage.
+        # TODO This is pretty hand-wavy. It would be good to develop
+        # TODO a more robust way of finding the compliance region, e.g.
+        # TODO 1. use approximate slope to determine STDDEV
+        # TODO 2. exclude compliance points as those beyond 2-3 STDDEV
+        # TODO 3. repeat for all new approximate slopes
+        left = modulus*(epsilon+error) + intercept
+        right = modulus*(epsilon-error) + intercept
+        cmask = ~((sigma < left) & (sigma > right))
+
+        # use a 3% window to filter out noise
+        cmask = median_filter(cmask, 2*int(0.03*sum(cmask)) + 1).astype(bool)
+
+        # keep only the largest region
+        start, length = 0, 0
+        i = 0
+        for k,g in groupby(cmask):  # returns keys and iterators for groups
+            tmp = sum(1 for _ in g)  # how large is this group
+            if tmp > length:  # is this the longest group?
+                start = i
+                length = tmp
+            i += tmp  # current position in the original list
+
+        # the compliance region is the region up to the longest group
+        cmask[:start] = True
+        cmask[start:] = False
+
+        # the elastic region is the area not plastic and
+        # not compliance
+        mask = ((~cmask) & (~pmask))
+
+        # linear least squares fit
+        modulus, intercept, corrcoeff, pvalue, SE_slope = \
+            linregress(epsilon[mask], sigma[mask])
+
         # statistics of the fit
         try:
-            subset = residual_strain(
-                epsilon[mask], sigma[mask], modulus, intercept)
+            # subset = residual_strain(
+            #     epsilon[mask], sigma[mask], modulus, intercept)
             calc = predicted_strain(sigma[mask], modulus, intercept)
-            cov = covariance(calc, epsilon[mask])
-            rsq = corrcoeff**2
-            # rsq = r_squared(calc, epsilon[mask])
+            cov = covariance(epsilon[mask], calc)
+            rsq = r_squared(epsilon[mask], calc)
         except ValueError: # invalid number of observations
             continue
+
         # update the best
         if target(cov, rsq) < target(best['cov'], best['rsq']):
-            best['param']   = [intercept, modulus]
+            best['param'] = [intercept, modulus]
             best['SE modulus'] = SE_slope
-            best['cov']     = cov
-            best['rsq']     = rsq
-            best['res']     = res
-            best['mask']    = mask
+            best['cov'] = cov
+            best['rsq'] = rsq
+            best['mask'] = mask
+            best['residual strain'] = res
             best['elastic strain'] = epsilon[mask]
             best['elastic stress'] = sigma[mask]
+        else:
+            # try to get out of a local minimum by changing
+            # the mask. Randomly erode or dilate. If the
+            # number of points is small, dilate.
+            if np.sum(mask) < 10 or np.random.random() > 0.5:
+                mask = binary_dilation(mask, iterations=2)
+            else:
+                mask = binary_erosion(mask, iterations=2)
+            modulus, intercept, corrcoeff, pvalue, SE_slope = \
+                linregress(epsilon[mask], sigma[mask])
+
     # update the modulus of the mechanical properties
     intercept, modulus = best['param']
     mechprop.elastic_modulus = modulus
-    mechprop.elastic_onset   = -intercept/modulus
+    mechprop.elastic_onset = -intercept/modulus
+
     # return the performance metrics
     return best

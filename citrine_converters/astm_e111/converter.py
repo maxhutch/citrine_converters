@@ -87,6 +87,7 @@ def converter(files=[], **keywds):
         msg = 'Strain and stress files must contain "strain" and ' \
               '"stress" fields, respectively.'
         raise IndexError(msg)
+
     # TODO: This may be a good use case for a more general set of
     # `transform` modules, e.g. `transform.reflect`,
     # `transform.scale`, etc. For only one, this is overkill, but
@@ -130,10 +131,8 @@ def converter(files=[], **keywds):
     except KeyError:
         # if not specified, then get from stress/strain input
         try:
-            get_units = lambda sys : \
-                [p.units for p in sys if p.name == 'units'][0]
-            stress_units = get_units(stress)
-            strain_units = get_units(strain)
+            stress_units = [p.units for p in stress if p.name == 'stress'][0]
+            strain_units = [p.units for p in strain if p.name == 'strain'][0]
         except IndexError:
             stress_units = 'unknown'
             strain_units = 'unitless'
@@ -150,6 +149,22 @@ def converter(files=[], **keywds):
         pif.Property(name='stress',
             scalars=list(mechprop.stress),
             units=stress_units),
+        pif.Property(name='elastic strain',
+            scalars=list(best['elastic strain']),
+            units=strain_units),
+        pif.Property(name='elastic stress',
+            scalars=list(best['elastic stress']),
+            units=stress_units),
+        pif.Property(name='covariance',
+            scalars=best['cov'],
+            units='unitless',
+            data_type='FIT',
+            tags='COV of the linear elastic fit'),
+        pif.Property(name='coefficient of variation',
+            scalars=best['rsq'],
+            units='unitless',
+            data_type='FIT',
+            tag=r'$R^2$ of the linear elastic fit'),
         pif.Property(name='elastic modulus',
             scalars=pif.Scalar(value=mechprop.elastic_modulus,
                                uncertainty=SE_modulus),
@@ -193,9 +208,22 @@ def converter(files=[], **keywds):
             data_type='FIT')
     ]
     # Wrap in system object
+    hough = best['hough']
+    resampled = best['resampled']
     results = pif.System(
         names='stress-strain curve',
         sub_systems=[subsys['strain'], subsys['stress']],
+        preparation=pif.ProcessStep(
+            name='approximator',
+            details=[
+                pif.Value(
+                    name='hough',
+                    vectors=[[col for col in row] for row in hough]
+                ),
+                pif.Value(
+                    name='resampled hough',
+                    vectors=[[col for col in row] for row in resampled]
+                )]),
         properties=results,
         references=pif.Reference(
             url='https://www.astm.org/Standards/E111.htm'),

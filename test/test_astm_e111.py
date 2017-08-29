@@ -5,6 +5,7 @@ import os, sys
 HERE=os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(HERE, '..'))
 
+import json
 import pytest
 import numpy as np
 import pandas as pd
@@ -28,6 +29,7 @@ from citrine_converters.tools import (
 
 STRAIN="{}/data/aramis-ey_strain-with-time.json".format(HERE)
 STRESS="{}/data/mark10-with-stress.json".format(HERE)
+EXPECTED="{}/data/expected-output.json".format(HERE)
 
 def pif_to_dataframe(pifobj):
     """
@@ -45,7 +47,7 @@ def pif_to_dataframe(pifobj):
     return pd.DataFrame(data)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def generate_output():
     return True
 
@@ -62,6 +64,28 @@ def stress_dataframe():
     with open(STRESS) as ifs:
         pifobj = pif.load(ifs)
     return pif_to_dataframe(pifobj)
+
+
+@pytest.fixture(scope="module")
+def expected_output(generate_output):
+    if generate_output:
+        write_output = True
+        exdata = dict()
+    else:
+        write_output = False
+        with open(EXPECTED, 'r') as ifs:
+            exdata = json.load(ifs)
+    yield exdata
+    try:
+        if write_output:
+            with open(EXPECTED, 'w') as ofs:
+                json.dump(exdata, ofs)
+    except:
+        print "Expected Output"
+        print "---------------"
+        for k,v in exdata.iteritems():
+            print "  {}: {}".format(k, v)
+        raise
 
 
 @pytest.fixture
@@ -124,16 +148,28 @@ def test_linear_merge():
 
 
 def test_mechanical_constructor(generate_output,
+                                expected_output,
                                 strain_dataframe,
                                 stress_dataframe):
     strain = strain_dataframe
     stress = stress_dataframe
     mechprop = MechanicalProperties(strain, stress)
-    assert np.isclose(mechprop.time.min(), 0.211914063), \
-        "MechanicalProperties constructor intersection failed on lower bound."
-    assert np.isclose(mechprop.time.max(), 245.00000), \
-        "MechanicalProperties constructor intersection failed on upper bound."
+    if not generate_output:
+        mechprop_time_min = expected_output['mechprop_time_min']
+        mechprop_time_max = expected_output['mechprop_time_max']
+        assert np.isclose(mechprop.time.min(), mechprop_time_min), \
+            "MechanicalProperties constructor intersection failed on lower bound."
+        assert np.isclose(mechprop.time.max(), mechprop_time_max), \
+            "MechanicalProperties constructor intersection failed on upper bound."
     if generate_output:
+        # record output
+        expected_output['mechprop_time_min'] = mechprop.time.min()
+        expected_output['mechprop_time_max'] = mechprop.time.max()
+        expected_output['strain_time_min'] = strain['time'].values.min()
+        expected_output['strain_time_max'] = strain['time'].values.max()
+        expected_output['stress_time_min'] = stress['time'].values.min()
+        expected_output['stress_time_max'] = stress['time'].values.max()
+        # report output to stdout
         print "time(min, max) = ({:.3f}, {:.3f})".format(mechprop.time.min(),
                                                          mechprop.time.max())
         print "strain time(min, max) = ({:.3f}, {:.3f})".format(
@@ -151,20 +187,29 @@ def test_mechanical_constructor(generate_output,
             dpi=300, bbox_inches='tight')
 
 
-def test_normalize(generate_output, mechanical_properties):
+def test_normalize(generate_output, expected_output, mechanical_properties):
     mechprop = mechanical_properties
     strain = np.copy(mechprop.strain)
     nstrain = Normalized(strain)
-    assert np.isclose(nstrain.min(), 0.0) and np.isclose(nstrain.max(), 1.0), \
-        'Normalized not normalized [0, 1].'
-    assert np.allclose(nstrain.unscaled, mechprop.strain), \
-        'Unscaled normalized strain does not match original strain.'
-    if generate_output:
+    if not generate_output:
+        nstrain_min = expected_output['nstrain_min']
+        nstrain_max = expected_output['nstrain_max']
+        assert np.isclose(nstrain.min(), nstrain_min) and \
+               np.isclose(nstrain.max(), nstrain_max), \
+            'Normalized not normalized [0, 1].'
+        assert np.allclose(nstrain.unscaled, mechprop.strain), \
+            'Unscaled normalized strain does not match original strain.'
+    else:
+        # record
+        expected_output['nstrain_min'] = float(mechprop.strain.min())
+        expected_output['nstrain_max'] = float(mechprop.strain.max())
+        # report
         print "strain(min, max) = ({:.6f}, {:.6f})".format(
             mechprop.strain.min(), mechprop.strain.max())
 
 
-def test_default_hough_constructor(generate_output, mechanical_properties):
+def test_default_hough_constructor(generate_output,
+                                   mechanical_properties):
     mechprop = mechanical_properties
     h = HoughSpace(Normalized(np.copy(mechprop.strain)),
                    Normalized(np.copy(mechprop.stress)))
@@ -222,25 +267,32 @@ def test_custom_hough_constructor(generate_output, mechanical_properties):
 
 
 def test_approximate_elastic_regime_from_hough(generate_output,
+                                               expected_output,
                                                mechanical_properties):
     mechprop = mechanical_properties
     strain = mechprop.strain
     stress = mechprop.stress
     elastic = approximate_elastic_regime_from_hough(mechprop)
-    assert np.isclose(elastic['elastic modulus'], 87448.9393194,
-                      rtol=5.e-2), \
-        'Approximate elastic modulus does not match: ' \
-        '{:.3f} (should be {:.3f})'.format(
-            elastic['elastic modulus'],
-            87448.9393194)
-    assert np.isclose(elastic['elastic onset'], 7.240136402072304e-05,
-                      rtol=5.e-2, atol=0.0001), \
-        'Approximate elastic onset does not match: ' \
-        '{:} (should be {:.4g})'.format(
-            elastic['elastic onset'],
-            7.240136402072304e-5)
-    if generate_output:
-        # grab data from elastic
+    if not generate_output:
+        elastic_modulus = expected_output['elastic modulus']
+        elastic_onset = expected_output['elastic onset']
+        assert np.isclose(elastic['elastic modulus'], elastic_modulus,
+                          rtol=5.e-2), \
+            'Approximate elastic modulus does not match: ' \
+            '{:.3f} (should be {:.3f})'.format(
+                elastic['elastic modulus'],
+                elastic_modulus)
+        assert np.isclose(elastic['elastic onset'], elastic_onset,
+                          rtol=5.e-2, atol=0.0001), \
+            'Approximate elastic onset does not match: ' \
+            '{:} (should be {:.4g})'.format(
+                elastic['elastic onset'],
+                elastic_onset)
+    else:
+        # record
+        expected_output['elastic modulus'] = float(elastic['elastic modulus'])
+        expected_output['elastic onset'] = float(elastic['elastic onset'])
+        # report
         for k,v in elastic.iteritems():
             print "{}: ({}, {})".format(
                 k, np.asarray(v).min(), np.asarray(v).max())
@@ -281,7 +333,9 @@ def test_approximate_elastic_regime_from_hough(generate_output,
                     dpi=300, bbox_inches='tight')
 
 
-def test_set_elastic(generate_output, mechanical_properties):
+def test_set_elastic(generate_output,
+                     expected_output,
+                     mechanical_properties):
     mechprop = mechanical_properties
     strain = mechprop.strain
     stress = mechprop.stress
@@ -289,47 +343,83 @@ def test_set_elastic(generate_output, mechanical_properties):
     SE_slope = best['SE modulus']
     epstol = 5.e-2
     sigtol = 1.e-2
-    assert np.isclose(mechprop.elastic_modulus, 107939.857234,
-                      atol=SE_slope), \
-        'Elastic modulus ({:.0f}) does not ' \
-        'match (107940)'.format(mechprop.elastic_modulus)
-    assert np.isclose(mechprop.elastic_onset, 0.000164771050777,
-                      rtol=epstol), \
-        'Elastic onset ({:.4g}) does not ' \
-        'match 0.000164771050777'.format(mechprop.elastic_onset)
-    assert np.isclose(mechprop.yield_stress, 491.634216083,
-                      atol=0.02*SE_slope), \
-        'Yield stress ({:.3f}) does not ' \
-        'match 491.634'.format(mechprop.yield_stress)
-    assert np.isclose(mechprop.yield_strain, 0.00671947613083,
-                      rtol=epstol), \
-        'Yield strain ({:.4g}) does not ' \
-        'match 0.0067195'.format(mechprop.yield_strain)
-    assert np.isclose(mechprop.ultimate_stress, 921.467796124,
-                      rtol=sigtol), \
-        'Ultimate stress ({:.3f}) does not ' \
-        'match 921.468'.format(mechprop.ultimate_stress)
-    assert np.isclose(mechprop.necking_onset, 0.294105976091,
-                      rtol=epstol), \
-        'Necking onset ({:.4g}) does not ' \
-        'match 0.29411'.format(mechprop.necking_onset)
-    assert np.isclose(mechprop.fracture_stress, 921.418982415,
-                      rtol=sigtol), \
-        'Fracture stress ({:.3f}) does not ' \
-        'match 921.419'.fomat(mechprop.fracture_stress)
-    assert np.isclose(mechprop.total_elongation, 0.294421409095,
-                      rtol=epstol), \
-        'Total elongation ({:.4g}) does not ' \
-        'match 0.29442'.format(mechprop.total_elongation)
-    assert np.isclose(mechprop.ductility, 0.28590708738,
-                      rtol=epstol), \
-        'Ductility ({:.4g}) does not ' \
-        'match 0.28591'.format(mechprop.ductility)
-    assert np.isclose(mechprop.toughness, 236.536813845,
-                      rtol=sigtol), \
-        'Toughness ({:.3f}) does not ' \
-        'match 236.537'.format(mechprop.toughness)
-    if generate_output:
+    if not generate_output:
+        elastic_modulus = expected_output['set_elastic-elastic modulus']
+        elastic_onset = expected_output['set_elastic-elastic onset']
+        yield_stress = expected_output['set_elastic-yield stress']
+        yield_strain = expected_output['set_elastic-yield strain']
+        ultimate_stress = expected_output['set_elastic-ultimate stress']
+        necking_onset = expected_output['set_elastic-necking onset']
+        fracture_stress = expected_output['set_elastic-fracture stress']
+        total_elongation = expected_output['set_elastic-total elongation']
+        ductility = expected_output['set_elastic-ductility']
+        toughness = expected_output['set_elastic-toughness']
+        assert np.isclose(mechprop.elastic_modulus, elastic_modulus,
+                          atol=SE_slope), \
+            'Elastic modulus ({:.0f}) does not ' \
+            'match ({:.0f})'.format(mechprop.elastic_modulus,
+                                    elastic_modulus)
+        assert np.isclose(mechprop.elastic_onset, elastic_onset,
+                          rtol=epstol), \
+            'Elastic onset ({:.4g}) does not ' \
+            'match {:.4g}'.format(mechprop.elastic_onset,
+                                  elastic_onset)
+        assert np.isclose(mechprop.yield_stress, yield_stress,
+                          atol=0.02*SE_slope), \
+            'Yield stress ({:.3f}) does not ' \
+            'match {:.3f}'.format(mechprop.yield_stress,
+                                  yield_stress)
+        assert np.isclose(mechprop.yield_strain, yield_strain,
+                          rtol=epstol), \
+            'Yield strain ({:.4g}) does not ' \
+            'match {:.4g}'.format(mechprop.yield_strain,
+                                  yield_strain)
+        assert np.isclose(mechprop.ultimate_stress, ultimate_stress,
+                          rtol=sigtol), \
+            'Ultimate stress ({:.3f}) does not ' \
+            'match {:.3f}'.format(mechprop.ultimate_stress,
+                                  ultimate_stress)
+        assert np.isclose(mechprop.necking_onset, necking_onset,
+                          rtol=epstol), \
+            'Necking onset ({:.4g}) does not ' \
+            'match {:.4g}'.format(mechprop.necking_onset,
+                                  necking_onset)
+        assert np.isclose(mechprop.fracture_stress, fracture_stress,
+                          rtol=sigtol), \
+            'Fracture stress ({:.3f}) does not ' \
+            'match {:.3f}'.fomat(mechprop.fracture_stress,
+                                 fracture_stress)
+        assert np.isclose(mechprop.total_elongation, total_elongation,
+                          rtol=epstol), \
+            'Total elongation ({:.4g}) does not ' \
+            'match {:.4g}'.format(mechprop.total_elongation,
+                                  total_elongation)
+        assert np.isclose(mechprop.ductility, ductility,
+                          rtol=epstol), \
+            'Ductility ({:.4g}%) does not ' \
+            'match {:.4g}%'.format(mechprop.ductility*100,
+                                   ductility*100)
+        assert np.isclose(mechprop.toughness, toughness,
+                          rtol=sigtol), \
+            'Toughness ({:.3f}) does not ' \
+            'match {:.3f}'.format(mechprop.toughness,
+                                  toughness)
+    else:
+        # record
+        expected_output['set_elastic-fitting parameters'] = best['param']
+        expected_output['set_elastic-STDEV modulus'] = best['SE modulus']
+        expected_output['set_elastic-covariance'] = best['cov']
+        expected_output['set_elastic-rsquared'] = best['rsq']
+        expected_output['set_elastic-elastic modulus'] = mechprop.elastic_modulus
+        expected_output['set_elastic-elastic onset'] = mechprop.elastic_onset
+        expected_output['set_elastic-yield stress'] = mechprop.yield_stress
+        expected_output['set_elastic-yield strain'] = mechprop.yield_strain
+        expected_output['set_elastic-ultimate stress'] = mechprop.ultimate_stress
+        expected_output['set_elastic-necking onset'] = mechprop.fracture_stress
+        expected_output['set_elastic-total elongation'] = mechprop.total_elongation
+        expected_output['set_elastic-ductility'] = mechprop.ductility
+        expected_output['set_elastic-toughness'] = mechprop.toughness
+        # report
         print('')
         print("best['param']: {}".format(best['param']))
         print("best['SE modulus']: {}".format(best['SE modulus']))
