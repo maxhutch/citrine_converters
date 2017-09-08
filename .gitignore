@@ -1,5 +1,6 @@
 # User-specific
 test/data/
+docs/hough/frames/
 
 # Mac OS X stuff
 *.DS_Store

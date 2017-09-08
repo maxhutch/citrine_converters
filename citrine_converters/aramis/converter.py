@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
+
 from pypif import pif
 import re
 import numpy as np
@@ -84,16 +86,24 @@ def converter(files=[], **keywds):
             strain.tag = [strain.tag, strain_type]
         #+ is a transform from % strain necessary?
         if strain.units == '%':
-            strain.scalars = list(np.divide(strain.scalars, 100.))
+            strain.scalars = list(np.divide(
+                [float(x) for x in strain.scalars if x.strip() != ''],
+                100.))
             strain.units = 'mm/mm'
         # Determine the time at which each measurement was taken
         if 'timestep' in keywds:
             #+ ensure timestep is a float
             timestep = float(keywds['timestep'])
+            time = list(data[names[0]]*timestep)
+            # if the length of the time and strain do not match
+            if len(time) != len(strain.scalars):
+                imin = np.min([len(time), len(strain.scalars)])
+                time = time[:imin]
+                strain.scalars = strain.scalars[:imin]
             replace_if_present_else_append(results,
                 pif.Property(
                     name='time',
-                    scalars=list(data[names[0]]*timestep),
+                    scalars=time,
                     units='s',
                     files=pif.FileReference(relative_path=fname),
                     methods=pif.Method(name='digital image correlation (DIC)',

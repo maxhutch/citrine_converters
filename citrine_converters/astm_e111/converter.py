@@ -137,6 +137,8 @@ def converter(files=[], **keywds):
             stress_units = 'unknown'
             strain_units = 'unitless'
 
+    # TODO: add epsilon/sigma mask to property results
+
     # Calculate the mechanical properties of the object
     mechprop = MechanicalProperties(epsilon, sigma)
     best = set_elastic(mechprop)
@@ -155,6 +157,11 @@ def converter(files=[], **keywds):
         pif.Property(name='elastic stress',
             scalars=list(best['elastic stress']),
             units=stress_units),
+        pif.Property(name='fitting mask',
+            scalars=list(best['mask'].astype(int)),
+            units='unitless',
+            data_type='FIT',
+            tags='Mask of elastic stress/strain data used in the fitting'),
         pif.Property(name='covariance',
             scalars=best['cov'],
             units='unitless',
