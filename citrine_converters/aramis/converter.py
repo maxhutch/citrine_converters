@@ -9,6 +9,13 @@ import pandas as pd
 from ..tools import replace_if_present_else_append
 
 
+def ensure_float(x):
+    try:
+        return float(x)
+    except ValueError:
+        return float('nan')
+
+
 def converter(files=[], **keywds):
     """
     Summary
@@ -62,7 +69,9 @@ def converter(files=[], **keywds):
             names = [names[0], label.strip()]
             units = ['None', units]
             # read in the data
-            data = pd.read_csv(ifs, names=names)
+            converters = dict((i, ensure_float) for i in range(len(names)))
+            data = pd.read_csv(ifs, names=names, converters=converters)
+            data.dropna(inplace=True)
         # list of properties extracted from the file
         results = [
             pif.Property(
@@ -86,9 +95,10 @@ def converter(files=[], **keywds):
             strain.tag = [strain.tag, strain_type]
         #+ is a transform from % strain necessary?
         if strain.units == '%':
-            strain.scalars = list(np.divide(
-                [float(x) for x in strain.scalars if x.strip() != ''],
-                100.))
+            strain.scalars = list(np.divide(strain.scalars, 100.))
+            # strain.scalars = list(np.divide(
+            #     [float(x) for x in strain.scalars if x.strip() != ''],
+            #     100.))
             strain.units = 'mm/mm'
         # Determine the time at which each measurement was taken
         if 'timestep' in keywds:
@@ -96,10 +106,10 @@ def converter(files=[], **keywds):
             timestep = float(keywds['timestep'])
             time = list(data[names[0]]*timestep)
             # if the length of the time and strain do not match
-            if len(time) != len(strain.scalars):
-                imin = np.min([len(time), len(strain.scalars)])
-                time = time[:imin]
-                strain.scalars = strain.scalars[:imin]
+            # if len(time) != len(strain.scalars):
+            #     imin = np.min([len(time), len(strain.scalars)])
+            #     time = time[:imin]
+            #     strain.scalars = strain.scalars[:imin]
             replace_if_present_else_append(results,
                 pif.Property(
                     name='time',
