@@ -55,7 +55,7 @@ def converter(files=[], **keywds):
     try:
         left = pif.load(open(left))
         right = pif.load(open(right))
-    except JSONDecodeError:
+    except ValueError:
         msg = 'Stress or strain data is not a properly formatted PIF file.'
         raise IOError(msg)
     #+ ensure strain file has "time" and "epsilon y"

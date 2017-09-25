@@ -81,10 +81,10 @@ def expected_output(generate_output):
             with open(EXPECTED, 'w') as ofs:
                 json.dump(exdata, ofs)
     except:
-        print "Expected Output"
-        print "---------------"
-        for k,v in exdata.iteritems():
-            print "  {}: {}".format(k, v)
+        print("Expected Output")
+        print("---------------")
+        for k,v in exdata.items():
+            print("  {}: {}".format(k, v))
         raise
 
 
@@ -170,12 +170,12 @@ def test_mechanical_constructor(generate_output,
         expected_output['stress_time_min'] = stress['time'].values.min()
         expected_output['stress_time_max'] = stress['time'].values.max()
         # report output to stdout
-        print "time(min, max) = ({:.3f}, {:.3f})".format(mechprop.time.min(),
-                                                         mechprop.time.max())
-        print "strain time(min, max) = ({:.3f}, {:.3f})".format(
-            strain['time'].values.min(), strain['time'].values.max())
-        print "stress time(min, max) = ({:.3f}, {:.3f})".format(
-            stress['time'].values.min(), stress['time'].values.max())
+        print("time(min, max) = ({:.3f}, {:.3f})".format(mechprop.time.min(),
+                                                         mechprop.time.max()))
+        print("strain time(min, max) = ({:.3f}, {:.3f})".format(
+            strain['time'].values.min(), strain['time'].values.max()))
+        print("stress time(min, max) = ({:.3f}, {:.3f})".format(
+            stress['time'].values.min(), stress['time'].values.max()))
         plt.style.use('ggplot')
         fig = plt.figure(figsize=(16,9))
         ax = fig.add_subplot(111)
@@ -204,8 +204,8 @@ def test_normalize(generate_output, expected_output, mechanical_properties):
         expected_output['nstrain_min'] = float(mechprop.strain.min())
         expected_output['nstrain_max'] = float(mechprop.strain.max())
         # report
-        print "strain(min, max) = ({:.6f}, {:.6f})".format(
-            mechprop.strain.min(), mechprop.strain.max())
+        print("strain(min, max) = ({:.6f}, {:.6f})".format(
+            mechprop.strain.min(), mechprop.strain.max()))
 
 
 def test_default_hough_constructor(generate_output,
@@ -294,8 +294,8 @@ def test_approximate_elastic_regime_from_hough(generate_output,
         expected_output['elastic onset'] = float(elastic['elastic onset'])
         # report
         for k,v in elastic.iteritems():
-            print "{}: ({}, {})".format(
-                k, np.asarray(v).min(), np.asarray(v).max())
+            print("{}: ({}, {})".format(
+                k, np.asarray(v).min(), np.asarray(v).max()))
         epsilon = elastic['elastic strain']
         sigma = elastic['elastic stress']
         modulus = elastic['elastic modulus']

@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 
 from pypif import pif
-from StringIO import StringIO
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 import numpy as np
 import pandas as pd
 from ..tools import replace_if_present_else_append
