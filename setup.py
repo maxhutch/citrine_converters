@@ -16,7 +16,7 @@ setup(
     long_description=readme,
     author='Branden Kappes',
     author_email='bkappes@mines.edu',
-    url='N/A',
+    url='https://github.com/csm-adapt/citrine_converters',
     license=license,
     packages=find_packages(exclude=('tests*', 'docs')),
 
